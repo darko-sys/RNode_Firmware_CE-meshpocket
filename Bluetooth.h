@@ -608,16 +608,20 @@ char bt_devname[11];
   }
 
   void bt_debond_all() {
-    Bluefruit.Periph.clearBonds();
+    // MeshPocket: InternalFS/bond dirs are unreliable (same reason we use RAM
+    // EEPROM). clearBonds() can hang forever at boot — never call it here.
+    #if BOARD_MODEL != BOARD_HELTEC_MESHP
+      Bluefruit.Periph.clearBonds();
+    #endif
   }
 
   void bt_enable_pairing() {
     // Serial.println("BT enable pairing");
     if (bt_state == BT_STATE_OFF) bt_start();
 
-    // Drop stale peripheral bonds so a previous failed Sideband attempt
-    // does not block a fresh MITM pairing.
-    bt_debond_all();
+    #if BOARD_MODEL != BOARD_HELTEC_MESHP
+      bt_debond_all();
+    #endif
 
     // Always mint a fresh PIN for this pairing window
     bt_update_passkey();
