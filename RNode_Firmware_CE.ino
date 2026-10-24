@@ -142,11 +142,24 @@ void setup() {
       pinMode(pin_led_rx, OUTPUT);
       digitalWrite(pin_led_rx, LED_OFF);
       pinMode(pin_btn_usr1, INPUT_PULLUP);
-      delay(100);
+      // Bring USB CDC up before EEPROM/radio so host can see the port even if later init stalls.
+      Serial.begin(serial_baudrate);
+      delay(300);
+      for (int i = 0; i < 6; i++) {
+        digitalWrite(pin_led_rx, LED_ON); delay(80);
+        digitalWrite(pin_led_rx, LED_OFF); delay(80);
+      }
+      Serial.write("MeshPocket RNode boot\r\n");
     #endif
 
 
-    if (!eeprom_begin()) { Serial.write("EEPROM initialisation failed.\r\n"); }
+    if (!eeprom_begin()) {
+      #if BOARD_MODEL == BOARD_HELTEC_MESHP
+        Serial.write("EEPROM initialisation failed.\r\n");
+      #else
+        Serial.write("EEPROM initialisation failed.\r\n");
+      #endif
+    }
   #endif
 
   // Seed the PRNG for CSMA R-value selection

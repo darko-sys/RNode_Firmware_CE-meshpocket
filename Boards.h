@@ -1398,11 +1398,11 @@
       #endif
 
     #elif BOARD_MODEL == BOARD_HELTEC_MESHP
-      // Radio-first bring-up: no e-ink yet (same approach as early T-Echo CE).
+      // USB bring-up first: no e-ink, no BLE (add BLE once serial/RNode works).
       #define HAS_EEPROM false
       #define HAS_DISPLAY false
       #define HAS_BLUETOOTH false
-      #define HAS_BLE true
+      #define HAS_BLE false
       #define HAS_CONSOLE false
       #define HAS_PMU false
       #define HAS_NP false
@@ -1410,7 +1410,7 @@
       #define HAS_TCXO true
       #define HAS_BUSY true
       #define HAS_INPUT true
-      #define HAS_SLEEP true
+      #define HAS_SLEEP false
       #define CONFIG_UART_BUFFER_SIZE 6144
       #define CONFIG_QUEUE_SIZE 6144
       #define CONFIG_QUEUE_MAX_LENGTH 200
