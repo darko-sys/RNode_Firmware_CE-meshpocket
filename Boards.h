@@ -118,6 +118,12 @@
   #define MODEL_C7            0xC7 // Heltec Mesh Node T114, 863-928 MHz
   #define MODEL_CB            0xCB // Heltec Mesh Node T114, 863-928 MHz + GPS
 
+  // Heltec MeshPocket (nRF52840 + SX1262 + e-ink); pinout from Meshtastic heltec_mesh_pocket
+  #define PRODUCT_HELTEC_MESHP 0xD2
+  #define BOARD_HELTEC_MESHP   0x46
+  #define MODEL_CD             0xCD // Heltec MeshPocket, 470-510 MHz
+  #define MODEL_CE             0xCE // Heltec MeshPocket, 863-928 MHz
+
   #define PRODUCT_TECHO       0x15 // LilyGO T-Echo devices
   #define BOARD_TECHO         0x44
   #define MODEL_16            0x16 // T-Echo 433 MHz
@@ -1390,6 +1396,66 @@
       #define PIN_GPS_RX 37
       #define PIN_GPS_TX 39 
       #endif
+
+    #elif BOARD_MODEL == BOARD_HELTEC_MESHP
+      // Radio-first bring-up: no e-ink yet (same approach as early T-Echo CE).
+      #define HAS_EEPROM false
+      #define HAS_DISPLAY false
+      #define HAS_BLUETOOTH false
+      #define HAS_BLE true
+      #define HAS_CONSOLE false
+      #define HAS_PMU false
+      #define HAS_NP false
+      #define HAS_SD false
+      #define HAS_TCXO true
+      #define HAS_BUSY true
+      #define HAS_INPUT true
+      #define HAS_SLEEP true
+      #define CONFIG_UART_BUFFER_SIZE 6144
+      #define CONFIG_QUEUE_SIZE 6144
+      #define CONFIG_QUEUE_MAX_LENGTH 200
+      #define EEPROM_SIZE 296
+      #define EEPROM_OFFSET EEPROM_SIZE-EEPROM_RESERVED
+      #define BLE_MANUFACTURER "Heltec"
+      #define BLE_MODEL "MeshPocket"
+
+      #define LED_ON LOW
+      #define LED_OFF HIGH
+
+      // USER button = P1.10 (Meshtastic PIN_BUTTON1)
+      const int pin_btn_usr1 = 42;
+      // Status LED = P0.13
+      const int pin_led_rx = 13;
+      const int pin_led_tx = 13;
+
+      #define INTERFACE_COUNT 1
+
+      const uint8_t interfaces[INTERFACE_COUNT] = {SX1262};
+      const bool interface_cfg[INTERFACE_COUNT][3] = {
+          // SX1262
+          {
+              false, // DEFAULT_SPI
+              true,  // HAS_TCXO
+              true   // DIO2_AS_RF_SWITCH
+          }
+      };
+      // Pins from Meshtastic variants/nrf52840/heltec_mesh_pocket/variant.h
+      // CS=26, SCK=4, MOSI=5, MISO=P1.09(41), BUSY=15, DIO1=16, RESET=12
+      const int8_t interface_pins[INTERFACE_COUNT][10] = {
+          {
+              26, // pin_ss
+              4,  // pin_sclk
+              5,  // pin_mosi
+              41, // pin_miso
+              15, // pin_busy
+              16, // pin_dio
+              12, // pin_reset
+              -1, // pin_txen
+              -1, // pin_rxen
+              -1  // pin_tcxo_enable
+          }
+      };
+
     #else
       #error An unsupported nRF board was selected. Cannot compile RNode firmware.
     #endif
