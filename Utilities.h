@@ -1375,6 +1375,47 @@ void promisc_disable() {
 }
 
 #if !HAS_EEPROM && MCU_VARIANT == MCU_NRF52
+  #if BOARD_MODEL == BOARD_HELTEC_MESHP
+  // RAM EEPROM with factory defaults so the radio can come online without
+  // rnodeconf InternalFS provisioning (SoftDevice path is unstable here).
+  static uint8_t meshp_eeprom[EEPROM_SIZE];
+  static bool meshp_eeprom_ready = false;
+  bool eeprom_begin() {
+    if (!meshp_eeprom_ready) {
+      memset(meshp_eeprom, 0xFF, EEPROM_SIZE);
+      meshp_eeprom[eeprom_addr(ADDR_PRODUCT)] = PRODUCT_HELTEC_MESHP;
+      meshp_eeprom[eeprom_addr(ADDR_MODEL)] = MODEL_CE;
+      meshp_eeprom[eeprom_addr(ADDR_HW_REV)] = 0x01;
+      meshp_eeprom[eeprom_addr(ADDR_SERIAL)+0] = 0x00;
+      meshp_eeprom[eeprom_addr(ADDR_SERIAL)+1] = 0x00;
+      meshp_eeprom[eeprom_addr(ADDR_SERIAL)+2] = 0x00;
+      meshp_eeprom[eeprom_addr(ADDR_SERIAL)+3] = 0x01;
+      uint32_t made = 0x68000000UL; // arbitrary timestamp
+      meshp_eeprom[eeprom_addr(ADDR_MADE)+0] = (made >> 24) & 0xFF;
+      meshp_eeprom[eeprom_addr(ADDR_MADE)+1] = (made >> 16) & 0xFF;
+      meshp_eeprom[eeprom_addr(ADDR_MADE)+2] = (made >> 8) & 0xFF;
+      meshp_eeprom[eeprom_addr(ADDR_MADE)+3] = made & 0xFF;
+      char data[CHECKSUMMED_SIZE];
+      for (uint8_t i = 0; i < CHECKSUMMED_SIZE; i++) {
+        data[i] = (char)meshp_eeprom[eeprom_addr(i)];
+      }
+      unsigned char *hash = MD5::make_hash(data, CHECKSUMMED_SIZE);
+      for (uint8_t i = 0; i < 16; i++) {
+        meshp_eeprom[eeprom_addr(ADDR_CHKSUM)+i] = hash[i];
+      }
+      free(hash);
+      meshp_eeprom[eeprom_addr(ADDR_INFO_LOCK)] = INFO_LOCK_BYTE;
+      // BLE on by default so Sideband can connect without a prior USB enable step
+      meshp_eeprom[eeprom_addr(ADDR_CONF_BT)] = BT_ENABLE_BYTE;
+      meshp_eeprom_ready = true;
+    }
+    return true;
+  }
+  uint8_t eeprom_read(uint32_t mapped_addr) {
+    if (mapped_addr >= EEPROM_SIZE) return 0xFF;
+    return meshp_eeprom[mapped_addr];
+  }
+  #else
   bool eeprom_begin() {
     InternalFS.begin();
 
@@ -1401,6 +1442,7 @@ void promisc_disable() {
       file.read(byte_ptr, 1);
       return byte;
   }
+  #endif
 #endif
 
 bool eeprom_info_locked() {
@@ -1458,9 +1500,13 @@ void kiss_dump_eeprom() {
 
 #if !HAS_EEPROM && MCU_VARIANT == MCU_NRF52
 void eeprom_flush() {
+  #if BOARD_MODEL == BOARD_HELTEC_MESHP
+    written_bytes = 0;
+  #else
     file.close();
     file.open(EEPROM_FILE, FILE_O_WRITE);
     written_bytes = 0;
+  #endif
 }
 #endif
 
@@ -1470,6 +1516,10 @@ void eeprom_update(int mapped_addr, uint8_t byte) {
 			EEPROM.write(mapped_addr, byte);
 			EEPROM.commit();
 		}
+  #elif !HAS_EEPROM && MCU_VARIANT == MCU_NRF52 && BOARD_MODEL == BOARD_HELTEC_MESHP
+    if (mapped_addr >= 0 && mapped_addr < (int)EEPROM_SIZE) {
+      meshp_eeprom[mapped_addr] = byte;
+    }
   #elif !HAS_EEPROM && MCU_VARIANT == MCU_NRF52
     // todo: clean up this implementation, writing one byte and syncing
     // each time is really slow

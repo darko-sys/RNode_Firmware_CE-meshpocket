@@ -41,7 +41,7 @@
                 interface_pins[0][2]
                )
       };
-  #elif BOARD_MODEL == BOARD_HELTEC_T114 || BOARD_MODEL == BOARD_HELTEC_MESHP
+  #elif BOARD_MODEL == BOARD_HELTEC_T114
     #define INTERFACE_SPI
     SPIClass interface_spi[1] = {
             // SX1262
@@ -49,6 +49,16 @@
                 NRF_SPIM1, 
                 interface_pins[0][3], 
                 interface_pins[0][1], 
+                interface_pins[0][2]
+               )
+      };
+  #elif BOARD_MODEL == BOARD_HELTEC_MESHP
+    #define INTERFACE_SPI
+    SPIClass interface_spi[1] = {
+            SPIClass(
+                NRF_SPIM3,
+                interface_pins[0][3],
+                interface_pins[0][1],
                 interface_pins[0][2]
                )
       };
@@ -142,24 +152,24 @@ void setup() {
       pinMode(pin_led_rx, OUTPUT);
       digitalWrite(pin_led_rx, LED_OFF);
       pinMode(pin_btn_usr1, INPUT_PULLUP);
-      // Bring USB CDC up before EEPROM/radio so host can see the port even if later init stalls.
       Serial.begin(serial_baudrate);
-      delay(300);
-      for (int i = 0; i < 6; i++) {
-        digitalWrite(pin_led_rx, LED_ON); delay(80);
-        digitalWrite(pin_led_rx, LED_OFF); delay(80);
-      }
-      Serial.write("MeshPocket RNode boot\r\n");
+      delay(500);
+      Serial.println("MeshPocket RNode boot");
+      Serial.flush();
     #endif
 
 
+    #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      Serial.println("step: eeprom_begin");
+      Serial.flush();
+    #endif
     if (!eeprom_begin()) {
-      #if BOARD_MODEL == BOARD_HELTEC_MESHP
-        Serial.write("EEPROM initialisation failed.\r\n");
-      #else
-        Serial.write("EEPROM initialisation failed.\r\n");
-      #endif
+      Serial.write("EEPROM initialisation failed.\r\n");
     }
+    #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      Serial.println("step: eeprom_begin done");
+      Serial.flush();
+    #endif
   #endif
 
   // Seed the PRNG for CSMA R-value selection
@@ -167,6 +177,9 @@ void setup() {
     // On ESP32, get the seed value from the
     // hardware RNG
     unsigned long seed_val = (unsigned long)esp_random();
+  #elif BOARD_MODEL == BOARD_HELTEC_MESHP
+    // Prefer millis seed; bare NRF_RNG can hang on some Heltec builds.
+    unsigned long seed_val = millis() ^ micros() ^ 0xC0FFEEu;
   #elif MCU_VARIANT == MCU_NRF52
     // On nRF, get the seed value from the
     // hardware RNG
@@ -233,8 +246,16 @@ void setup() {
   memset(seq, 0xFF, sizeof(seq));
   memset(read_len, 0, sizeof(read_len));
 
+  #if BOARD_MODEL == BOARD_HELTEC_MESHP
+    Serial.println("step: setup_interfaces");
+    Serial.flush();
+  #endif
   setup_interfaces();
 
+  #if BOARD_MODEL == BOARD_HELTEC_MESHP
+    Serial.println("step: queues");
+    Serial.flush();
+  #endif
   modem_packet_queue = xQueueCreate(MODEM_QUEUE_SIZE, sizeof(modem_packet_t*));
 
   for (int i = 0; i < INTERFACE_COUNT; i++) {
@@ -254,6 +275,9 @@ void setup() {
 
   // add call to init_channel_stats here? \todo
 
+  #if BOARD_MODEL == BOARD_HELTEC_MESHP
+    Serial.println("step: create radio objects");
+  #endif
   // Create and configure interface objects
   for (uint8_t i = 0; i < INTERFACE_COUNT; i++) {
       switch (interfaces[i]) {
@@ -331,6 +355,9 @@ void setup() {
     delay(100);
   #endif
 
+  #if BOARD_MODEL == BOARD_HELTEC_MESHP
+    Serial.println("step: radio preInit");
+  #endif
     // Check installed transceiver chip(s) and probe boot parameters. If any of
     // the configured modems cannot be initialised, do not boot
     for (int i = 0; i < INTERFACE_COUNT; i++) {
@@ -407,8 +434,31 @@ void setup() {
     #endif
 
     #if HAS_BLUETOOTH || HAS_BLE == true
+      #if BOARD_MODEL == BOARD_HELTEC_MESHP
+        Serial.println("step: bt_init");
+        Serial.flush();
+      #endif
       bt_init();
       bt_init_ran = true;
+      #if BOARD_MODEL == BOARD_HELTEC_MESHP
+        Serial.print("bt_ready="); Serial.println(bt_ready ? 1 : 0);
+        Serial.print("bt_enabled="); Serial.println(bt_enabled ? 1 : 0);
+        Serial.print("bt_state="); Serial.println(bt_state);
+        Serial.print("bt_name="); Serial.println(bt_devname);
+        Serial.flush();
+        // Physical button is easy to miss on MeshPocket — open pairing on every boot
+        // for ~90s so Sideband can Pair New Device without a long-press.
+        if (bt_ready && bt_enabled && bt_state != BT_STATE_CONNECTED) {
+          bt_enable_pairing();
+          Serial.print("bt_pair_pin="); Serial.println(bt_ssp_pin);
+          Serial.flush();
+          // Force an immediate e-ink redraw so the 6-digit PIN is visible
+          last_epd_refresh = 0;
+          last_epd_full_refresh = 0;
+          last_disp_update = 0;
+          if (disp_ready) update_display();
+        }
+      #endif
     #endif
 
     if (console_active) {
@@ -440,8 +490,14 @@ void setup() {
     }
 
 
+  #if BOARD_MODEL == BOARD_HELTEC_MESHP
+    Serial.println("step: validate_status");
+  #endif
   // Validate board health, EEPROM and config
   validate_status();
+  #if BOARD_MODEL == BOARD_HELTEC_MESHP
+    Serial.println("step: setup complete");
+  #endif
 }
 
 void lora_receive(RadioInterface* radio) {
@@ -1523,6 +1579,15 @@ void tx_queue_handler(RadioInterface* radio) {
 void work_while_waiting() { loop(); }
 
 void loop() {
+    #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      {
+        static uint32_t last_hb = 0;
+        if (millis() - last_hb > 500) {
+          last_hb = millis();
+          Serial.println("alive");
+        }
+      }
+    #endif
     #if MCU_VARIANT == MCU_ESP32
       modem_packet_t *modem_packet = NULL;
       if(modem_packet_queue && xQueueReceive(modem_packet_queue, &modem_packet, 0) == pdTRUE && modem_packet) {
@@ -1717,10 +1782,23 @@ void button_event(uint8_t event, unsigned long duration) {
           console_active = true;
           console_start();
         #endif
+      #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      } else if (duration > 2000) {
+        // Shorter hold on MeshPocket — 5s was easy to miss / fight the e-ink lag
+        #if HAS_BLUETOOTH || HAS_BLE
+          if (bt_state != BT_STATE_CONNECTED) {
+            bt_enable_pairing();
+            last_epd_refresh = 0;
+            last_disp_update = 0;
+            if (disp_ready) update_display();
+          }
+        #endif
+      #else
       } else if (duration > 5000) {
         #if HAS_BLUETOOTH || HAS_BLE
           if (bt_state != BT_STATE_CONNECTED) { bt_enable_pairing(); }
         #endif
+      #endif
       } else if (duration > 700) {
         #if HAS_SLEEP
           sleep_now();

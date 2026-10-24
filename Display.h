@@ -119,6 +119,12 @@ void busyCallback(const void* p) { display_callback(); }
   #define DISP_W 128
   #define DISP_H 64
   #define DISP_ADDR -1
+#elif BOARD_MODEL == BOARD_HELTEC_MESHP
+  // E-ink on SPIM1 (Meshtastic SPI1); LoRa on SPIM3; SoftDevice keeps SPIM0 freer
+  SPIClass displaySPI = SPIClass(NRF_SPIM1, pin_disp_miso, pin_disp_sck, pin_disp_mosi);
+  #define DISP_W 250
+  #define DISP_H 122
+  #define DISP_ADDR -1
 #elif BOARD_MODEL == BOARD_TBEAM_S_V1
   #define DISP_RST -1
   #define DISP_ADDR 0x3C
@@ -159,8 +165,9 @@ void busyCallback(const void* p) { display_callback(); }
   uint32_t last_epd_full_refresh = 0;
   #define REFRESH_PERIOD 600000 // 10 minutes in ms
   #endif
-#elif BOARD_MODEL == BOARD_TECHO
+#elif BOARD_MODEL == BOARD_TECHO || BOARD_MODEL == BOARD_HELTEC_MESHP
 GxEPD2_BW<DISPLAY_MODEL, DISPLAY_MODEL::HEIGHT> display(DISPLAY_MODEL(pin_disp_cs, pin_disp_dc, pin_disp_reset, pin_disp_busy));
+// MeshPocket panel ghosts easily — keep refresh conservative (Meshtastic ~0.03–1 Hz caps).
 float disp_target_fps = 0.2;
 uint32_t last_epd_refresh = 0;
 uint32_t last_epd_full_refresh = 0;
@@ -257,6 +264,28 @@ void update_area_positions() {
       p_as_x = 64;
       p_as_y = 0;
     }
+  #elif BOARD_MODEL == BOARD_HELTEC_MESHP
+    // GxEPD2_213_B74 after setRotation(3): 250 x 128 (122 visible).
+    // Landscape: two 64x64 tiles side-by-side → ~244x122; center in the buffer.
+    {
+      const int tile = (int)(64 * DISPLAY_SCALE + 0.5f);       // 122
+      const int content_w = tile * 2;                          // 244
+      const int content_h = tile;                              // 122
+      const int ox = (250 - content_w) / 2;                    // 3
+      const int oy = (128 - content_h) / 2;                    // 3
+      if (disp_mode == DISP_MODE_PORTRAIT) {
+        // Stacked: center the 122-wide column on the 250-wide panel
+        p_ad_x = (250 - tile) / 2;
+        p_ad_y = oy;
+        p_as_x = p_ad_x;
+        p_as_y = oy + tile;
+      } else {
+        p_ad_x = ox;
+        p_ad_y = oy;
+        p_as_x = ox + tile;
+        p_as_y = oy;
+      }
+    }
   #else
     if (disp_mode == DISP_MODE_PORTRAIT) {
       p_ad_x = 0 * DISPLAY_SCALE;
@@ -308,7 +337,7 @@ uint8_t display_contrast = 0x00;
     }
     level = value;
   }
-#elif BOARD_MODEL == BOARD_OPENCOM_XL || BOARD_MODEL == BOARD_RAK4631 || BOARD_MODEL == BOARD_H_W_PAPER
+#elif BOARD_MODEL == BOARD_OPENCOM_XL || BOARD_MODEL == BOARD_RAK4631 || BOARD_MODEL == BOARD_H_W_PAPER || BOARD_MODEL == BOARD_HELTEC_MESHP
   // no backlight on these displays
   void set_contrast (void* display, uint8_t contrast) {};
 #else
@@ -375,6 +404,12 @@ bool display_init() {
         pinMode(pin_backlight, OUTPUT);
         analogWrite(pin_backlight, 0);
       #endif
+    #elif BOARD_MODEL == BOARD_HELTEC_MESHP
+      display.init(0, true, 10, false, displaySPI, SPISettings(4000000, MSBFIRST, SPI_MODE0));
+      // Full controller buffer (250x128 @ rot 3); visible area is 250x122
+      display.setRotation(3);
+      display.setPartialWindow(0, 0, display.width(), display.height());
+      display.epd2.setBusyCallback(busyCallback);
     #elif BOARD_MODEL == BOARD_TBEAM_S_V1
       Wire.begin(SDA_OLED, SCL_OLED);
     #elif BOARD_MODEL == BOARD_XIAO_S3
@@ -479,6 +514,10 @@ bool display_init() {
             disp_mode = DISP_MODE_PORTRAIT;
             #endif
           #elif BOARD_MODEL == BOARD_TECHO
+            disp_mode = DISP_MODE_LANDSCAPE;
+            display.setRotation(3);
+          #elif BOARD_MODEL == BOARD_HELTEC_MESHP
+            // Wide panel: landscape tiles fit 250x122; rotation 3 matches Meshtastic
             disp_mode = DISP_MODE_LANDSCAPE;
             display.setRotation(3);
           #elif BOARD_MODEL == BOARD_HELTEC32_V3
@@ -888,8 +927,14 @@ void update_stat_area() {
   }
 }
 
+#if HAS_BLUETOOTH || HAS_BLE
 extern char bt_devname[11];
 extern char bt_dh[16];
+#else
+// Display UI shows device ID from BLE hash; stub when BLE is off.
+char bt_devname[11] = "RNode";
+char bt_dh[16] = {0};
+#endif
 
 void draw_disp_area() {
   if (!device_init_done || firmware_update_mode) {

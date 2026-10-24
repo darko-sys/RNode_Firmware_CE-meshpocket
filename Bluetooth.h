@@ -37,6 +37,11 @@
 #endif
 
 #define BT_PAIRING_TIMEOUT 35000
+#if BOARD_MODEL == BOARD_HELTEC_MESHP
+  // E-ink is slow; give Sideband more time to scan + enter PIN
+  #undef BT_PAIRING_TIMEOUT
+  #define BT_PAIRING_TIMEOUT 90000
+#endif
 #define BLE_FLUSH_TIMEOUT 20
 uint32_t bt_pairing_started = 0;
 

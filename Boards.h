@@ -1398,11 +1398,16 @@
       #endif
 
     #elif BOARD_MODEL == BOARD_HELTEC_MESHP
-      // USB bring-up first: no e-ink, no BLE (add BLE once serial/RNode works).
+      // USB + BLE RNode, 2.13" e-ink (LCMEN2R13ECC1 / SSD1680).
+      // Skip firmware-hash gate (unsigned factory EEPROM).
       #define HAS_EEPROM false
-      #define HAS_DISPLAY false
+      #define HAS_DISPLAY true
+      #define DISPLAY EINK_BW
+      #define DISPLAY_SCALE_OVERRIDE true
+      #define DISPLAY_SCALE 1.90625
+      #define DISPLAY_MODEL GxEPD2_213_B74
       #define HAS_BLUETOOTH false
-      #define HAS_BLE false
+      #define HAS_BLE true
       #define HAS_CONSOLE false
       #define HAS_PMU false
       #define HAS_NP false
@@ -1411,6 +1416,8 @@
       #define HAS_BUSY true
       #define HAS_INPUT true
       #define HAS_SLEEP false
+      #undef VALIDATE_FIRMWARE
+      #define VALIDATE_FIRMWARE false
       #define CONFIG_UART_BUFFER_SIZE 6144
       #define CONFIG_QUEUE_SIZE 6144
       #define CONFIG_QUEUE_MAX_LENGTH 200
@@ -1427,6 +1434,16 @@
       // Status LED = P0.13
       const int pin_led_rx = 13;
       const int pin_led_tx = 13;
+
+      // E-ink on dedicated SPI (Meshtastic heltec_mesh_pocket) — not LoRa SPIM3
+      const int pin_disp_cs = 24;     // P0.24
+      const int pin_disp_dc = 31;     // P0.31
+      const int pin_disp_reset = 36;  // P1.04
+      const int pin_disp_busy = 38;   // P1.06
+      const int pin_disp_en = -1;     // no discrete enable
+      const int pin_disp_sck = 22;    // P0.22
+      const int pin_disp_mosi = 20;   // P0.20
+      const int pin_disp_miso = -1;
 
       #define INTERFACE_COUNT 1
 
