@@ -436,9 +436,6 @@ char bt_devname[11];
           // Serial.println("Auth level success");
           bt_state = BT_STATE_CONNECTED;
           cable_state = CABLE_STATE_DISCONNECTED;
-          // Give the host time to persist the bond (Sideband/Android/Windows)
-          // before we drop the link; host must reconnect as bonded device.
-          delay(1500);
           connection->disconnect();
           bt_disable_pairing();
       } else {
@@ -468,15 +465,9 @@ char bt_devname[11];
     cable_state = CABLE_STATE_DISCONNECTED;
 
     BLEConnection* conn = Bluefruit.Connection(conn_handle);
-    // Conservative link params: 2M PHY + 512-byte MTU breaks some Android/Windows
-    // BLE stacks (Sideband MTU timeout / hard crash paths). Prefer 1M + ~247.
-    #if BOARD_MODEL == BOARD_HELTEC_MESHP
-      conn->requestMtuExchange(247);
-    #else
-      conn->requestPHY(BLE_GAP_PHY_2MBPS);
-      conn->requestMtuExchange(512+3);
-      conn->requestDataLengthUpdate();
-    #endif
+    conn->requestPHY(BLE_GAP_PHY_2MBPS);
+    conn->requestMtuExchange(512+3);
+    conn->requestDataLengthUpdate();
   }
 
   void bt_disconnect_callback(uint16_t conn_handle, uint8_t reason) {
@@ -514,7 +505,6 @@ char bt_devname[11];
       Bluefruit.autoConnLed(false);
       if (Bluefruit.begin()) {
         uint32_t pin = bt_get_passkey();
-        // 6-digit PIN needs 7 bytes (was [6] → overflow / corrupt SoftDevice state)
         char pin_char[7];
         snprintf(pin_char, sizeof(pin_char), "%lu", (unsigned long)pin);
 
@@ -530,12 +520,7 @@ char bt_devname[11];
         Bluefruit.Security.setPIN(pin_char);
         Bluefruit.Periph.setDisconnectCallback(bt_disconnect_callback);
         Bluefruit.Security.setPairCompleteCallback(bt_pairing_complete);
-        #if BOARD_MODEL == BOARD_HELTEC_MESHP
-          // Slightly wider interval — more tolerant hosts (phones / WinBLE)
-          Bluefruit.Periph.setConnInterval(12, 24); // 15 - 30 ms
-        #else
-          Bluefruit.Periph.setConnInterval(6, 12); // 7.5 - 15 ms
-        #endif
+        Bluefruit.Periph.setConnInterval(6, 12); // 7.5 - 15 ms
 
         const ble_gap_addr_t gap_addr = Bluefruit.getAddr();
         char *data = (char*)malloc(BT_DEV_ADDR_LEN+1);
@@ -588,8 +573,6 @@ char bt_devname[11];
       // Use Scan response for Name
       Bluefruit.ScanResponse.addName();
 
-      // Restart advertising after disconnect so Sideband can reconnect post-bond
-      Bluefruit.Advertising.restartOnDisconnect(true);
       Bluefruit.Advertising.start(0);
 
       bt_state = BT_STATE_ON;
@@ -607,24 +590,10 @@ char bt_devname[11];
     }
   }
 
-  void bt_debond_all() {
-    // MeshPocket: InternalFS/bond dirs are unreliable (same reason we use RAM
-    // EEPROM). clearBonds() can hang forever at boot — never call it here.
-    #if BOARD_MODEL != BOARD_HELTEC_MESHP
-      Bluefruit.Periph.clearBonds();
-    #endif
-  }
-
   void bt_enable_pairing() {
     // Serial.println("BT enable pairing");
     if (bt_state == BT_STATE_OFF) bt_start();
 
-    #if BOARD_MODEL != BOARD_HELTEC_MESHP
-      bt_debond_all();
-    #endif
-
-    // Always mint a fresh PIN for this pairing window
-    bt_update_passkey();
     uint32_t pin = bt_get_passkey();
     char pin_char[7];
     snprintf(pin_char, sizeof(pin_char), "%lu", (unsigned long)pin);
@@ -635,6 +604,8 @@ char bt_devname[11];
     bt_state = BT_STATE_PAIRING;
     kiss_indicate_btpin();
   }
+
+  void bt_debond_all() { }
 
   void update_bt() {
     if (bt_allow_pairing && millis()-bt_pairing_started >= BT_PAIRING_TIMEOUT) {

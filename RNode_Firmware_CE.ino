@@ -446,18 +446,9 @@ void setup() {
         Serial.print("bt_state="); Serial.println(bt_state);
         Serial.print("bt_name="); Serial.println(bt_devname);
         Serial.flush();
-        // Physical button is easy to miss on MeshPocket — open pairing on every boot
-        // for ~90s so Sideband can Pair New Device without a long-press.
-        if (bt_ready && bt_enabled && bt_state != BT_STATE_CONNECTED) {
-          bt_enable_pairing();
-          Serial.print("bt_pair_pin="); Serial.println(bt_ssp_pin);
-          Serial.flush();
-          // Force an immediate e-ink redraw so the 6-digit PIN is visible
-          last_epd_refresh = 0;
-          last_epd_full_refresh = 0;
-          last_disp_update = 0;
-          if (disp_ready) update_display();
-        }
+        // No auto-pairing at boot (can stall bring-up). Long-press USER (~2s) for PIN.
+        Serial.println("bt: boot pairing skipped; long-press USER for PIN");
+        Serial.flush();
       #endif
     #endif
 
