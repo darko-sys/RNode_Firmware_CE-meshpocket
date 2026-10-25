@@ -1774,22 +1774,28 @@ void button_event(uint8_t event, unsigned long duration) {
           console_start();
         #endif
       #if BOARD_MODEL == BOARD_HELTEC_MESHP
-      } else if (duration > 2000) {
-        // Shorter hold on MeshPocket — 5s was easy to miss / fight the e-ink lag
+      } else {
+        // MeshPocket: any USER click opens pairing + PIN (BLE priority).
+        // Old short-toggle was a no-op for presses >700ms (sleep dead-zone).
         #if HAS_BLUETOOTH || HAS_BLE
+          if (bt_state == BT_STATE_OFF) {
+            bt_start();
+            bt_conf_save(true);
+          }
           if (bt_state != BT_STATE_CONNECTED) {
             bt_enable_pairing();
             last_epd_refresh = 0;
+            last_epd_full_refresh = 0;
             last_disp_update = 0;
             if (disp_ready) update_display();
           }
         #endif
+      }
       #else
       } else if (duration > 5000) {
         #if HAS_BLUETOOTH || HAS_BLE
           if (bt_state != BT_STATE_CONNECTED) { bt_enable_pairing(); }
         #endif
-      #endif
       } else if (duration > 700) {
         #if HAS_SLEEP
           sleep_now();
@@ -1807,6 +1813,7 @@ void button_event(uint8_t event, unsigned long duration) {
         }
         #endif
       }
+      #endif
     }
 }
 

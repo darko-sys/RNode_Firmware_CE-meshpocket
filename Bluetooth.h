@@ -400,6 +400,9 @@ char bt_devname[11];
     // Serial.println("BT Stop");
     if (bt_state != BT_STATE_OFF) {
       bt_allow_pairing = false;
+      #if BOARD_MODEL == BOARD_HELTEC_MESHP
+        Bluefruit.Advertising.stop();
+      #endif
       bt_state = BT_STATE_OFF;
     }
   }
@@ -507,11 +510,14 @@ char bt_devname[11];
       Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
       Bluefruit.autoConnLed(false);
       #if BOARD_MODEL == BOARD_HELTEC_MESHP
-        // Corrupted/half-written bond LittleFS (e.g. after clearBonds experiments)
-        // makes Bluefruit.begin() → bond_init() hang forever: UI paints once,
-        // then no loop → no buttons, no USB KISS. Reformat bond storage first.
+        // One-shot repair: corrupted bond LittleFS hangs Bluefruit.begin().
+        // Do not format every boot — that wipes bonds and breaks Sideband reconnect.
         InternalFS.begin();
-        InternalFS.format();
+        if (!InternalFS.exists("/rnode_ok")) {
+          InternalFS.format();
+          InternalFS.begin();
+          InternalFS.mkdir("/rnode_ok");
+        }
       #endif
       if (Bluefruit.begin()) {
         uint32_t pin = bt_get_passkey();
