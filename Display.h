@@ -1033,6 +1033,20 @@ void draw_disp_area() {
         disp_area.printf("%02X%02X", bt_dh[14], bt_dh[15]);
       }
 
+      #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      // Pairing PIN must win over hw_ready / firmware banners — otherwise
+      // Sideband has nothing to type and Pair New Device looks empty.
+      if (bt_state == BT_STATE_PAIRING && bt_ssp_pin != 0) {
+        char pin_str[8];
+        snprintf(pin_str, sizeof(pin_str), "%06lu", (unsigned long)bt_ssp_pin);
+        disp_area.fillRect(0, 37, disp_area.width(), 27, DISPLAY_WHITE);
+        disp_area.setFont();
+        disp_area.setTextSize(2);
+        disp_area.setTextColor(DISPLAY_BLACK);
+        disp_area.setCursor(8, 45);
+        disp_area.print(pin_str);
+      } else
+      #endif
       if (!hw_ready || !device_firmware_ok()) {
         if (!device_firmware_ok()) {
           disp_area.drawBitmap(0, 37, bm_fw_corrupt, disp_area.width(), 27, DISPLAY_WHITE, DISPLAY_BLACK);
