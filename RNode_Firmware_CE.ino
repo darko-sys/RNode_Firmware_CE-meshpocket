@@ -446,9 +446,16 @@ void setup() {
         Serial.print("bt_state="); Serial.println(bt_state);
         Serial.print("bt_name="); Serial.println(bt_devname);
         Serial.flush();
-        // No auto-pairing at boot (can stall bring-up). Long-press USER (~2s) for PIN.
-        Serial.println("bt: boot pairing skipped; long-press USER for PIN");
-        Serial.flush();
+        // Open pairing at boot so PIN is on e-ink without relying on USER.
+        if (bt_ready && bt_enabled && bt_state != BT_STATE_CONNECTED) {
+          bt_enable_pairing();
+          Serial.print("bt_pair_pin="); Serial.println(bt_ssp_pin);
+          Serial.flush();
+          last_epd_refresh = 0;
+          last_epd_full_refresh = 0;
+          last_disp_update = 0;
+          if (disp_ready) update_display();
+        }
       #endif
     #endif
 
