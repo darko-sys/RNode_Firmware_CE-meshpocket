@@ -31,6 +31,7 @@
   #include <math.h>
   #if BOARD_MODEL == BOARD_HELTEC_MESHP
     #include <InternalFileSystem.h>
+    #include "MeshpDebug.h"
   #endif
   #define BLE_RX_BUF 6144
   BLEUart SerialBT(BLE_RX_BUF);
@@ -397,7 +398,9 @@ char bt_devname[11];
   uint8_t eeprom_read(uint32_t mapped_addr);
 
   void bt_stop() {
-    // Serial.println("BT Stop");
+    #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      MP_DBG("[MP] bt_stop (was state=%u)\r\n", bt_state);
+    #endif
     if (bt_state != BT_STATE_OFF) {
       bt_allow_pairing = false;
       #if BOARD_MODEL == BOARD_HELTEC_MESHP
@@ -408,7 +411,9 @@ char bt_devname[11];
   }
 
   void bt_disable_pairing() {
-    // Serial.println("BT Disable pairing");
+    #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      MP_DBG("[MP] bt_disable_pairing pin was %lu\r\n", (unsigned long)bt_ssp_pin);
+    #endif
     bt_allow_pairing = false;
     pairing_pin = 0;
     bt_ssp_pin = 0;
@@ -418,11 +423,17 @@ char bt_devname[11];
   void bt_flush() { if (bt_state == BT_STATE_CONNECTED) { SerialBT.flushTXD(); } }
 
   void bt_pairing_complete(uint16_t conn_handle, uint8_t auth_status) {
-    // Serial.println("BT pairing complete");
     BLEConnection* connection = Bluefruit.Connection(conn_handle);
+    #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      MP_DBG("[MP] pairing_complete auth=0x%02X bonded=%d\r\n",
+             auth_status, connection && connection->bonded() ? 1 : 0);
+    #endif
     if (auth_status == BLE_GAP_SEC_STATUS_SUCCESS) {
       ble_gap_conn_sec_mode_t security = connection->getSecureMode();
-      // Serial.println("Bonding success");
+      #if BOARD_MODEL == BOARD_HELTEC_MESHP
+        MP_DBG("[MP] secureMode sm=%u lv=%u (need sm=1 lv>=3 for MITM)\r\n",
+               (unsigned)security.sm, (unsigned)security.lv);
+      #endif
 
       // On the NRF52 it is not possible with the Arduino library to reject
       // requests from devices with no IO capabilities, which would allow
@@ -439,26 +450,36 @@ char bt_devname[11];
       // Requires investigation.
 
       if (security.sm == 1 && security.lv >= 3) {
-          // Serial.println("Auth level success");
+          #if BOARD_MODEL == BOARD_HELTEC_MESHP
+            MP_DBG("[MP] MITM OK — disconnect so host can reconnect bonded\r\n");
+          #endif
           bt_state = BT_STATE_CONNECTED;
           cable_state = CABLE_STATE_DISCONNECTED;
           connection->disconnect();
           bt_disable_pairing();
       } else {
-          // Serial.println("Auth level failure, debonding");
+          #if BOARD_MODEL == BOARD_HELTEC_MESHP
+            MP_DBG("[MP] REJECT just-works / weak auth — debond\r\n");
+          #endif
           if (connection->bonded()) { connection->removeBondKey(); }
           connection->disconnect();
           bt_disable_pairing();
       }
     } else {
-      // Serial.println("Bonding failure");
+      #if BOARD_MODEL == BOARD_HELTEC_MESHP
+        MP_DBG("[MP] bonding FAILURE status=0x%02X\r\n", auth_status);
+      #endif
       connection->disconnect();
       bt_disable_pairing();
     }
   }
 
   bool bt_passkey_callback(uint16_t conn_handle, uint8_t const passkey[6], bool match_request) {
-    // Serial.println("Passkey callback");
+    #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      MP_DBG("[MP] passkey_cb allow=%d match_req=%d pk=%.6s expect=%06lu\r\n",
+             bt_allow_pairing ? 1 : 0, match_request ? 1 : 0,
+             (const char*)passkey, (unsigned long)pairing_pin);
+    #endif
     if (bt_allow_pairing) {
       return true;
     }
@@ -466,7 +487,10 @@ char bt_devname[11];
   }
 
   void bt_connect_callback(uint16_t conn_handle) {
-    // Serial.println("Connect callback");
+    #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      MP_DBG("[MP] BLE connect handle=%u (pairing_allow=%d state=%u)\r\n",
+             conn_handle, bt_allow_pairing ? 1 : 0, bt_state);
+    #endif
     bt_state = BT_STATE_CONNECTED;
     cable_state = CABLE_STATE_DISCONNECTED;
 
@@ -477,7 +501,9 @@ char bt_devname[11];
   }
 
   void bt_disconnect_callback(uint16_t conn_handle, uint8_t reason) {
-    // Serial.println("Disconnect callback");
+    #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      MP_DBG("[MP] BLE disconnect handle=%u reason=0x%02X\r\n", conn_handle, reason);
+    #endif
     if (reason != BLE_GAP_SEC_STATUS_SUCCESS) {
         bt_state = BT_STATE_ON;
     }
@@ -592,22 +618,33 @@ char bt_devname[11];
       Bluefruit.Advertising.start(0);
 
       bt_state = BT_STATE_ON;
+      #if BOARD_MODEL == BOARD_HELTEC_MESHP
+        MP_DBG("[MP] bt_start advertising name=%s\r\n", bt_devname);
+      #endif
      }
   }
 
   bool bt_init() {
-    // Serial.println("BT init");
     bt_state = BT_STATE_OFF;
+    #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      MP_DBG("[MP] bt_init begin\r\n");
+    #endif
     if (bt_setup_hw()) {
       if (bt_enabled && !console_active) bt_start();
+      #if BOARD_MODEL == BOARD_HELTEC_MESHP
+        MP_DBG("[MP] bt_init done ready=%d enabled=%d state=%u\r\n",
+               bt_ready ? 1 : 0, bt_enabled ? 1 : 0, bt_state);
+      #endif
       return true;
     } else {
+      #if BOARD_MODEL == BOARD_HELTEC_MESHP
+        MP_DBG("[MP] bt_init FAILED\r\n");
+      #endif
       return false;
     }
   }
 
   void bt_enable_pairing() {
-    // Serial.println("BT enable pairing");
     if (bt_state == BT_STATE_OFF) bt_start();
 
     uint32_t pin = bt_get_passkey();
@@ -619,12 +656,35 @@ char bt_devname[11];
     bt_pairing_started = millis();
     bt_state = BT_STATE_PAIRING;
     kiss_indicate_btpin();
+    #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      MP_DBG("[MP] PAIRING ON name=%s PIN=%06lu (enter in Sideband)\r\n",
+             bt_devname, (unsigned long)bt_ssp_pin);
+    #endif
   }
 
-  void bt_debond_all() { }
+  void bt_debond_all() {
+    #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      MP_DBG("[MP] bt_debond_all (no-op on MeshPocket FS)\r\n");
+    #endif
+  }
 
   void update_bt() {
+    #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      static uint32_t last_pair_ping = 0;
+      if (bt_allow_pairing && (millis() - last_pair_ping) > 5000) {
+        last_pair_ping = millis();
+        uint32_t left = 0;
+        if (millis() - bt_pairing_started < BT_PAIRING_TIMEOUT) {
+          left = (BT_PAIRING_TIMEOUT - (millis() - bt_pairing_started)) / 1000;
+        }
+        MP_DBG("[MP] pairing active PIN=%06lu name=%s state=%u left~%lus\r\n",
+               (unsigned long)bt_ssp_pin, bt_devname, bt_state, (unsigned long)left);
+      }
+    #endif
     if (bt_allow_pairing && millis()-bt_pairing_started >= BT_PAIRING_TIMEOUT) {
+      #if BOARD_MODEL == BOARD_HELTEC_MESHP
+        MP_DBG("[MP] pairing TIMEOUT\r\n");
+      #endif
       bt_disable_pairing();
     }
   }

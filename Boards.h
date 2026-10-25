@@ -1418,6 +1418,10 @@
       #define HAS_SLEEP false
       #undef VALIDATE_FIRMWARE
       #define VALIDATE_FIRMWARE false
+      // Verbose USB-serial BLE/pairing trace @ 115200. Build with -DMESHP_DEBUG=0 to silence.
+      #ifndef MESHP_DEBUG
+        #define MESHP_DEBUG 1
+      #endif
       #define CONFIG_UART_BUFFER_SIZE 6144
       #define CONFIG_QUEUE_SIZE 6144
       #define CONFIG_QUEUE_MAX_LENGTH 200

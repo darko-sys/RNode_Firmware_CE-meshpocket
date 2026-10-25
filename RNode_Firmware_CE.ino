@@ -16,6 +16,9 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include "Utilities.h"
+#if BOARD_MODEL == BOARD_HELTEC_MESHP
+  #include "MeshpDebug.h"
+#endif
 
 #if MCU_VARIANT == MCU_NRF52
   #if BOARD_MODEL == BOARD_RAK4631 || BOARD_MODEL == BOARD_OPENCOM_XL
@@ -485,18 +488,19 @@ void setup() {
   // Validate board health, EEPROM and config
   validate_status();
   #if BOARD_MODEL == BOARD_HELTEC_MESHP
-    // NOW hw_ready / fw ok — PIN bitmap is allowed to draw
+    MP_DBG("[MP] after validate hw_ready=%d fw_ok=%d bt_ready=%d bt_en=%d\r\n",
+           hw_ready ? 1 : 0, device_firmware_ok() ? 1 : 0,
+           bt_ready ? 1 : 0, bt_enabled ? 1 : 0);
     if (bt_ready && bt_enabled && bt_state != BT_STATE_CONNECTED) {
       bt_enable_pairing();
-      Serial.print("bt_pair_pin="); Serial.println(bt_ssp_pin);
-      Serial.print("hw_ready="); Serial.println(hw_ready ? 1 : 0);
-      Serial.flush();
       last_epd_refresh = 0;
       last_epd_full_refresh = 0;
       last_disp_update = 0;
       if (disp_ready) update_display();
+      MP_DBG("[MP] *** TYPE THIS PIN IN SIDEBAND: %06lu ***\r\n",
+             (unsigned long)bt_ssp_pin);
     }
-    Serial.println("step: setup complete");
+    MP_DBG("[MP] setup complete\r\n");
   #endif
 }
 
@@ -1771,6 +1775,10 @@ void sleep_now() {
 }
 
 void button_event(uint8_t event, unsigned long duration) {
+    #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      MP_DBG("[MP] button event=%u duration=%lums blanked=%d bt_state=%u\r\n",
+             event, duration, display_blanked ? 1 : 0, bt_state);
+    #endif
     if (display_blanked) {
       display_unblank();
     } else {
@@ -1785,18 +1793,21 @@ void button_event(uint8_t event, unsigned long duration) {
       #if BOARD_MODEL == BOARD_HELTEC_MESHP
       } else {
         // MeshPocket: any USER click opens pairing + PIN (BLE priority).
-        // Old short-toggle was a no-op for presses >700ms (sleep dead-zone).
         #if HAS_BLUETOOTH || HAS_BLE
           if (bt_state == BT_STATE_OFF) {
+            MP_DBG("[MP] button: bt_start\r\n");
             bt_start();
             bt_conf_save(true);
           }
           if (bt_state != BT_STATE_CONNECTED) {
+            MP_DBG("[MP] button: enable_pairing\r\n");
             bt_enable_pairing();
             last_epd_refresh = 0;
             last_epd_full_refresh = 0;
             last_disp_update = 0;
             if (disp_ready) update_display();
+          } else {
+            MP_DBG("[MP] button ignored — already CONNECTED\r\n");
           }
         #endif
       }
