@@ -1034,16 +1034,18 @@ void draw_disp_area() {
       }
 
       #if BOARD_MODEL == BOARD_HELTEC_MESHP
-      // Pairing PIN must win over hw_ready / firmware banners — otherwise
-      // Sideband has nothing to type and Pair New Device looks empty.
+      // Pairing PIN must win over hw_ready banners. Stay inside 64px canvas
+      // (size-2 text overflows and looks "cut off" next to the RF tile).
       if (bt_state == BT_STATE_PAIRING && bt_ssp_pin != 0) {
         char pin_str[8];
         snprintf(pin_str, sizeof(pin_str), "%06lu", (unsigned long)bt_ssp_pin);
         disp_area.fillRect(0, 37, disp_area.width(), 27, DISPLAY_WHITE);
         disp_area.setFont();
-        disp_area.setTextSize(2);
+        disp_area.setTextSize(1);
         disp_area.setTextColor(DISPLAY_BLACK);
-        disp_area.setCursor(8, 45);
+        disp_area.setCursor(4, 42);
+        disp_area.print("PIN");
+        disp_area.setCursor(4, 54);
         disp_area.print(pin_str);
       } else
       #endif
@@ -1230,8 +1232,25 @@ void update_display(bool blank = false) {
           display.fillScreen(DISPLAY_WHITE);
         #endif
 
-        update_stat_area();
-        update_disp_area();
+        #if BOARD_MODEL == BOARD_HELTEC_MESHP
+        // Full-panel PIN during pairing — both tiles would clip a 6-digit code.
+        if (bt_state == BT_STATE_PAIRING && bt_ssp_pin != 0) {
+          char pin_str[8];
+          snprintf(pin_str, sizeof(pin_str), "%06lu", (unsigned long)bt_ssp_pin);
+          display.fillScreen(DISPLAY_WHITE);
+          display.setTextColor(DISPLAY_BLACK);
+          display.setTextSize(3);
+          display.setCursor(35, 40);
+          display.print(pin_str);
+          display.setTextSize(1);
+          display.setCursor(70, 90);
+          display.print(bt_devname);
+        } else
+        #endif
+        {
+          update_stat_area();
+          update_disp_area();
+        }
       }
       
       #if DISPLAY == EINK_BW || DISPLAY == EINK_3C
