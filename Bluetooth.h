@@ -29,6 +29,9 @@
 #elif MCU_VARIANT == MCU_NRF52
   #include <bluefruit.h>
   #include <math.h>
+  #if BOARD_MODEL == BOARD_HELTEC_MESHP
+    #include <InternalFileSystem.h>
+  #endif
   #define BLE_RX_BUF 6144
   BLEUart SerialBT(BLE_RX_BUF);
   BLEDis  bledis;
@@ -503,6 +506,13 @@ char bt_devname[11];
       }
       Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
       Bluefruit.autoConnLed(false);
+      #if BOARD_MODEL == BOARD_HELTEC_MESHP
+        // Corrupted/half-written bond LittleFS (e.g. after clearBonds experiments)
+        // makes Bluefruit.begin() → bond_init() hang forever: UI paints once,
+        // then no loop → no buttons, no USB KISS. Reformat bond storage first.
+        InternalFS.begin();
+        InternalFS.format();
+      #endif
       if (Bluefruit.begin()) {
         uint32_t pin = bt_get_passkey();
         char pin_char[7];
