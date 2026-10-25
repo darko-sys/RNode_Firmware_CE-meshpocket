@@ -449,22 +449,31 @@ char bt_devname[11];
       // that, which I don't fancy doing. Impact on security is likely minimal.
       // Requires investigation.
 
+      #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      // Sideband on some Androids crashes or uses Just Works; rejecting lv<3
+      // made pairing look like random failure. Accept any successful bond here,
+      // give the host time to store it, then disconnect for reconnect.
+      {
+        bool mitm = (security.sm == 1 && security.lv >= 3);
+        MP_DBG("[MP] bond OK mitm=%d — delay then disconnect for reconnect\r\n", mitm ? 1 : 0);
+        bt_state = BT_STATE_CONNECTED;
+        cable_state = CABLE_STATE_DISCONNECTED;
+        delay(2000);
+        connection->disconnect();
+        bt_disable_pairing();
+      }
+      #else
       if (security.sm == 1 && security.lv >= 3) {
-          #if BOARD_MODEL == BOARD_HELTEC_MESHP
-            MP_DBG("[MP] MITM OK — disconnect so host can reconnect bonded\r\n");
-          #endif
           bt_state = BT_STATE_CONNECTED;
           cable_state = CABLE_STATE_DISCONNECTED;
           connection->disconnect();
           bt_disable_pairing();
       } else {
-          #if BOARD_MODEL == BOARD_HELTEC_MESHP
-            MP_DBG("[MP] REJECT just-works / weak auth — debond\r\n");
-          #endif
           if (connection->bonded()) { connection->removeBondKey(); }
           connection->disconnect();
           bt_disable_pairing();
       }
+      #endif
     } else {
       #if BOARD_MODEL == BOARD_HELTEC_MESHP
         MP_DBG("[MP] bonding FAILURE status=0x%02X\r\n", auth_status);
