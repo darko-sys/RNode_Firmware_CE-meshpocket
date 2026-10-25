@@ -403,8 +403,12 @@ char bt_devname[11];
     #endif
     if (bt_state != BT_STATE_OFF) {
       bt_allow_pairing = false;
+      pairing_pin = 0;
+      bt_ssp_pin = 0;
       #if BOARD_MODEL == BOARD_HELTEC_MESHP
         Bluefruit.Advertising.stop();
+        BLEConnection* conn = Bluefruit.Connection(0);
+        if (conn && conn->connected()) { conn->disconnect(); }
       #endif
       bt_state = BT_STATE_OFF;
     }

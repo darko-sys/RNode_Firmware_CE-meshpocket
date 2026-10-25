@@ -911,8 +911,14 @@ void update_stat_area() {
     if (disp_mode == DISP_MODE_PORTRAIT) {
       drawBitmap(p_as_x, p_as_y, stat_area.getBuffer(), stat_area.width(), stat_area.height(), DISPLAY_WHITE, DISPLAY_BLACK);
     } else if (disp_mode == DISP_MODE_LANDSCAPE) {
+      #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      // Right tile (icons): invert for e-ink readability.
+      drawBitmap(p_as_x+2, p_as_y, stat_area.getBuffer(), stat_area.width(), stat_area.height(), DISPLAY_BLACK, DISPLAY_WHITE);
+      if (device_init_done && !disp_ext_fb) drawLine(p_as_x, 0, p_as_x, DISP_W/2, DISPLAY_BLACK);
+      #else
       drawBitmap(p_as_x+2, p_as_y, stat_area.getBuffer(), stat_area.width(), stat_area.height(), DISPLAY_WHITE, DISPLAY_BLACK);
       if (device_init_done && !disp_ext_fb) drawLine(p_as_x, 0, p_as_x, DISP_W/2, DISPLAY_WHITE);
+      #endif
     }
 
   } else {
@@ -1239,11 +1245,13 @@ void update_display(bool blank = false) {
           snprintf(pin_str, sizeof(pin_str), "%06lu", (unsigned long)bt_ssp_pin);
           display.fillScreen(DISPLAY_WHITE);
           display.setTextColor(DISPLAY_BLACK);
-          display.setTextSize(3);
-          display.setCursor(35, 40);
+          display.setFont();
+          display.setTextSize(4);
+          // ~6 chars * 24px ≈ 144; center on 250-wide panel
+          display.setCursor((250 - 6 * 24) / 2, 28);
           display.print(pin_str);
-          display.setTextSize(1);
-          display.setCursor(70, 90);
+          display.setTextSize(2);
+          display.setCursor(55, 88);
           display.print(bt_devname);
         } else
         #endif
@@ -1273,6 +1281,50 @@ void update_display(bool blank = false) {
 void display_unblank() {
   last_unblank_event = millis();
 }
+
+#if BOARD_MODEL == BOARD_HELTEC_MESHP
+// E-Ink keeps this image after SYSTEMOFF — snapshot, not live state.
+void meshp_draw_sleep_splash() {
+  display.setFullWindow();
+  display.fillScreen(DISPLAY_WHITE);
+  display.setTextColor(DISPLAY_BLACK);
+  display.setFont();
+  display.setTextSize(3);
+  display.setCursor(40, 12);
+  display.print("SLEEP");
+  display.setTextSize(1);
+  display.setCursor(70, 48);
+  display.print("wake: USER");
+
+  const char* ble_line = "BLE off";
+  #if HAS_BLE
+    if (bt_state == BT_STATE_CONNECTED) ble_line = "BLE connected";
+    else if (bt_state == BT_STATE_PAIRING) ble_line = "BLE pairing";
+    else if (bt_state == BT_STATE_ON) ble_line = "BLE on";
+    else if (bt_state == BT_STATE_OFF) ble_line = "BLE off";
+  #endif
+  display.setTextSize(2);
+  display.setCursor(16, 68);
+  display.print(ble_line);
+
+  bool lora_on = false;
+  for (int i = 0; i < INTERFACE_COUNT; i++) {
+    if (interface_obj[i] && interface_obj[i]->getRadioOnline()) { lora_on = true; break; }
+  }
+  display.setCursor(16, 96);
+  display.print(lora_on ? "LoRa on" : "LoRa off");
+
+  display.display(false); // full refresh so image survives power-off
+  delay(400);
+}
+
+void meshp_force_display_refresh() {
+  last_epd_refresh = 0;
+  last_epd_full_refresh = 0;
+  last_disp_update = 0;
+  if (disp_ready) update_display();
+}
+#endif
 
 void ext_fb_enable() {
   disp_ext_fb = true;

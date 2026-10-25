@@ -1415,7 +1415,7 @@
       #define HAS_TCXO true
       #define HAS_BUSY true
       #define HAS_INPUT true
-      #define HAS_SLEEP false
+      #define HAS_SLEEP true
       #undef VALIDATE_FIRMWARE
       #define VALIDATE_FIRMWARE false
       // Verbose USB-serial BLE/pairing trace @ 115200. Build with -DMESHP_DEBUG=0 to silence.
@@ -1433,7 +1433,7 @@
       #define LED_ON LOW
       #define LED_OFF HIGH
 
-      // USER button = P1.10 (Meshtastic PIN_BUTTON1)
+      // USER button = P1.10 (Meshtastic PIN_BUTTON1) — also wake from SYSTEMOFF
       const int pin_btn_usr1 = 42;
       // Status LED = P0.13
       const int pin_led_rx = 13;

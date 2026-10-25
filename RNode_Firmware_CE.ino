@@ -1734,6 +1734,10 @@ void process_serial() {
 
 void sleep_now() {
   #if HAS_SLEEP == true
+    #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      // Draw splash while radios/BLE still reflect last live state, then power down.
+      if (disp_ready) { meshp_draw_sleep_splash(); }
+    #endif
     for (int i = 0; i < INTERFACE_COUNT; i++) {
         stopRadio(interface_obj[i]); // TODO: Check this on all platforms
     }
@@ -1766,6 +1770,11 @@ void sleep_now() {
         delay(2000);
         analogWrite(PIN_VEXT_EN, 0);
         delay(100);
+      #elif BOARD_MODEL == BOARD_HELTEC_MESHP
+        #if HAS_BLE
+          bt_stop();
+          delay(50);
+        #endif
       #endif
       sd_power_gpregret_set(0, 0x6d);
       nrf_gpio_cfg_sense_input(pin_btn_usr1, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
@@ -1776,12 +1785,71 @@ void sleep_now() {
 
 void button_event(uint8_t event, unsigned long duration) {
     #if BOARD_MODEL == BOARD_HELTEC_MESHP
-      MP_DBG("[MP] button event=%u duration=%lums blanked=%d bt_state=%u\r\n",
+      // On MeshPocket, `duration` is the multi-click count (1..4), not hold ms.
+      MP_DBG("[MP] button event=%u clicks=%lu blanked=%d bt_state=%u\r\n",
              event, duration, display_blanked ? 1 : 0, bt_state);
     #endif
     if (display_blanked) {
       display_unblank();
     } else {
+      #if BOARD_MODEL == BOARD_HELTEC_MESHP
+      {
+        uint8_t clicks = (uint8_t)duration;
+        if (clicks < 1) clicks = 1;
+        if (clicks == 1) {
+          #if HAS_BLE
+            if (bt_state == BT_STATE_OFF) {
+              MP_DBG("[MP] USER 1x: BLE on\r\n");
+              bt_start();
+              bt_conf_save(true);
+            } else {
+              MP_DBG("[MP] USER 1x: BLE off\r\n");
+              bt_stop();
+              bt_conf_save(false);
+            }
+            meshp_force_display_refresh();
+          #endif
+        } else if (clicks == 2) {
+          MP_DBG("[MP] USER 2x: LoRa toggle\r\n");
+          bool any_on = false;
+          for (int i = 0; i < INTERFACE_COUNT; i++) {
+            if (interface_obj[i] && interface_obj[i]->getRadioOnline()) { any_on = true; break; }
+          }
+          if (any_on) {
+            for (int i = 0; i < INTERFACE_COUNT; i++) { stopRadio(interface_obj[i]); }
+            radio_conf_save(false);
+          } else {
+            radio_conf_save(true);
+            for (int i = 0; i < INTERFACE_COUNT; i++) {
+              if (!startRadio(interface_obj[i])) {
+                MP_DBG("[MP] LoRa start failed (need host radio config?)\r\n");
+              }
+            }
+          }
+          meshp_force_display_refresh();
+        } else if (clicks == 3) {
+          #if HAS_BLE
+            MP_DBG("[MP] USER 3x: pairing\r\n");
+            if (bt_state == BT_STATE_OFF) {
+              bt_start();
+              bt_conf_save(true);
+            }
+            if (bt_state != BT_STATE_CONNECTED) {
+              bt_enable_pairing();
+              meshp_force_display_refresh();
+            } else {
+              MP_DBG("[MP] pairing skipped — already CONNECTED\r\n");
+            }
+          #endif
+        } else {
+          // 4+ clicks → soft sleep
+          MP_DBG("[MP] USER 4x: sleep\r\n");
+          #if HAS_SLEEP
+            sleep_now();
+          #endif
+        }
+      }
+      #else
       if (duration > 10000) {
         #if HAS_CONSOLE
           #if HAS_BLUETOOTH || HAS_BLE
@@ -1790,28 +1858,6 @@ void button_event(uint8_t event, unsigned long duration) {
           console_active = true;
           console_start();
         #endif
-      #if BOARD_MODEL == BOARD_HELTEC_MESHP
-      } else {
-        // MeshPocket: any USER click opens pairing + PIN (BLE priority).
-        #if HAS_BLUETOOTH || HAS_BLE
-          if (bt_state == BT_STATE_OFF) {
-            MP_DBG("[MP] button: bt_start\r\n");
-            bt_start();
-            bt_conf_save(true);
-          }
-          if (bt_state != BT_STATE_CONNECTED) {
-            MP_DBG("[MP] button: enable_pairing\r\n");
-            bt_enable_pairing();
-            last_epd_refresh = 0;
-            last_epd_full_refresh = 0;
-            last_disp_update = 0;
-            if (disp_ready) update_display();
-          } else {
-            MP_DBG("[MP] button ignored — already CONNECTED\r\n");
-          }
-        #endif
-      }
-      #else
       } else if (duration > 5000) {
         #if HAS_BLUETOOTH || HAS_BLE
           if (bt_state != BT_STATE_CONNECTED) { bt_enable_pairing(); }

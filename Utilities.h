@@ -1407,6 +1407,7 @@ void promisc_disable() {
       meshp_eeprom[eeprom_addr(ADDR_INFO_LOCK)] = INFO_LOCK_BYTE;
       // BLE on by default so Sideband can connect without a prior USB enable step
       meshp_eeprom[eeprom_addr(ADDR_CONF_BT)] = BT_ENABLE_BYTE;
+      meshp_eeprom[eeprom_addr(ADDR_CONF_RADIO)] = RADIO_ENABLE_BYTE;
       meshp_eeprom_ready = true;
     }
     return true;
@@ -1707,6 +1708,26 @@ void bt_conf_save(bool is_enabled) {
       eeprom_flush();
     #endif
 	}
+}
+
+void radio_conf_save(bool is_enabled) {
+	if (is_enabled) {
+		eeprom_update(eeprom_addr(ADDR_CONF_RADIO), RADIO_ENABLE_BYTE);
+	} else {
+		eeprom_update(eeprom_addr(ADDR_CONF_RADIO), 0x00);
+	}
+	#if !HAS_EEPROM && MCU_VARIANT == MCU_NRF52
+		eeprom_flush();
+	#endif
+}
+
+bool radio_conf_enabled() {
+	// Explicit 0x00 = user disabled; anything else (incl. unset 0xFF) = enabled.
+	#if HAS_EEPROM
+		return EEPROM.read(eeprom_addr(ADDR_CONF_RADIO)) != 0x00;
+	#else
+		return eeprom_read(eeprom_addr(ADDR_CONF_RADIO)) != 0x00;
+	#endif
 }
 
 void di_conf_save(uint8_t dint) {
