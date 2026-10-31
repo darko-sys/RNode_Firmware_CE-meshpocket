@@ -29,11 +29,6 @@
   #define EVENT_BUTTON_DOUBLE_CLICK 0x14
   #define EVENT_BUTTON_TRIPLE_CLICK 0x15
 
-  #if BOARD_MODEL == BOARD_HELTEC_MESHP
-    // Multi-click window — avoids unreliable short/long holds on e-ink lag.
-    #define MESHP_CLICK_WINDOW_MS 500
-  #endif
-  
   int button_events = EVENT_CLICKS;
   int button_state = RELEASED;
   int debounce_state = button_state;
@@ -41,11 +36,6 @@
   unsigned long button_debounce_delay = 25;
   unsigned long button_down_last = 0;
   unsigned long button_up_last = 0;
-
-  #if BOARD_MODEL == BOARD_HELTEC_MESHP
-    uint8_t meshp_click_count = 0;
-    unsigned long meshp_click_last = 0;
-  #endif
 
   // Forward declaration
   void button_event(uint8_t event, unsigned long duration);
@@ -61,18 +51,6 @@
   void input_get_click_events() {
     button_events = EVENT_CLICKS;
   }
-
-  #if BOARD_MODEL == BOARD_HELTEC_MESHP
-  void meshp_flush_clicks() {
-    if (meshp_click_count == 0) return;
-    if ((millis() - meshp_click_last) < MESHP_CLICK_WINDOW_MS) return;
-    uint8_t n = meshp_click_count;
-    meshp_click_count = 0;
-    if (n > 4) n = 4;
-    // Pass click count in the duration argument for MeshPocket.
-    button_event(EVENT_BUTTON_CLICK, (unsigned long)n);
-  }
-  #endif
 
   void input_read() {
     int button_reading = digitalRead(PIN_BUTTON);
@@ -96,22 +74,14 @@
         } else if (button_events == EVENT_CLICKS) {
           if (previous_state == PRESSED && button_state == RELEASED) {
             button_up_last = millis();
-            #if BOARD_MODEL == BOARD_HELTEC_MESHP
-              meshp_click_count++;
-              meshp_click_last = millis();
-            #else
-              button_event(EVENT_BUTTON_CLICK, button_up_last-button_down_last);
-            #endif
+            // Hold duration in ms (same model as stock RNode)
+            button_event(EVENT_BUTTON_CLICK, button_up_last - button_down_last);
           } else if (previous_state == RELEASED && button_state == PRESSED) {
             button_down_last = millis();
           }
         }
       }
     }
-
-    #if BOARD_MODEL == BOARD_HELTEC_MESHP
-      meshp_flush_clicks();
-    #endif
   }
 
   bool button_pressed() {

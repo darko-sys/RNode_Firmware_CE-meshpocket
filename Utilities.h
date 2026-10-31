@@ -1405,9 +1405,27 @@ void promisc_disable() {
       }
       free(hash);
       meshp_eeprom[eeprom_addr(ADDR_INFO_LOCK)] = INFO_LOCK_BYTE;
-      // BLE on by default so Sideband can connect without a prior USB enable step
+      // BLE + LoRa on by default so Sideband can connect without a prior USB step.
+      // RAM EEPROM resets every boot → state after restart is always this baseline.
       meshp_eeprom[eeprom_addr(ADDR_CONF_BT)] = BT_ENABLE_BYTE;
       meshp_eeprom[eeprom_addr(ADDR_CONF_RADIO)] = RADIO_ENABLE_BYTE;
+      // Seed EU 868 radio params so startRadio() unlocks without host CMD_CONF_SAVE.
+      {
+        uint32_t freq = MESHP_DEFAULT_FREQ;
+        uint32_t bw = MESHP_DEFAULT_BW;
+        meshp_eeprom[eeprom_addr(ADDR_CONF_SF)] = MESHP_DEFAULT_SF;
+        meshp_eeprom[eeprom_addr(ADDR_CONF_CR)] = MESHP_DEFAULT_CR;
+        meshp_eeprom[eeprom_addr(ADDR_CONF_TXP)] = MESHP_DEFAULT_TXP;
+        meshp_eeprom[eeprom_addr(ADDR_CONF_BW)+0] = (bw >> 24) & 0xFF;
+        meshp_eeprom[eeprom_addr(ADDR_CONF_BW)+1] = (bw >> 16) & 0xFF;
+        meshp_eeprom[eeprom_addr(ADDR_CONF_BW)+2] = (bw >> 8) & 0xFF;
+        meshp_eeprom[eeprom_addr(ADDR_CONF_BW)+3] = bw & 0xFF;
+        meshp_eeprom[eeprom_addr(ADDR_CONF_FREQ)+0] = (freq >> 24) & 0xFF;
+        meshp_eeprom[eeprom_addr(ADDR_CONF_FREQ)+1] = (freq >> 16) & 0xFF;
+        meshp_eeprom[eeprom_addr(ADDR_CONF_FREQ)+2] = (freq >> 8) & 0xFF;
+        meshp_eeprom[eeprom_addr(ADDR_CONF_FREQ)+3] = freq & 0xFF;
+        meshp_eeprom[eeprom_addr(ADDR_CONF_OK)] = CONF_OK_BYTE;
+      }
       meshp_eeprom_ready = true;
     }
     return true;

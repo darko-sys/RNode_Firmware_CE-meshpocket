@@ -1088,6 +1088,37 @@ void draw_disp_area() {
             disp_area.drawBitmap(0, 37, bm_online, disp_area.width(), 27, DISPLAY_WHITE, DISPLAY_BLACK);
           }
         } else {
+          #if BOARD_MODEL == BOARD_HELTEC_MESHP
+          // Hold UX legend when LoRa off (same model as stock RNode).
+          if (disp_page == 0) {
+            disp_area.fillRect(0, 37, disp_area.width(), 27, DISPLAY_WHITE);
+            disp_area.setFont();
+            disp_area.setTextSize(1);
+            disp_area.setTextColor(DISPLAY_BLACK);
+            disp_area.setCursor(2, 42); disp_area.print("tap BLE");
+            disp_area.setCursor(2, 52); disp_area.print("hold sleep/5s PIN");
+          } else if (disp_page == 1) {
+            if (!console_active) {
+              disp_area.drawBitmap(0, 37, bm_hwok, disp_area.width(), 27, DISPLAY_WHITE, DISPLAY_BLACK);
+            } else {
+              disp_area.drawBitmap(0, 37, bm_console_active, disp_area.width(), 27, DISPLAY_WHITE, DISPLAY_BLACK);
+            }
+          } else if (disp_page == 2) {
+            disp_area.drawBitmap(0, 37, bm_version, disp_area.width(), 27, DISPLAY_WHITE, DISPLAY_BLACK);
+            char *v_str = (char*)malloc(3+1);
+            sprintf(v_str, "%01d%02d", MAJ_VERS, MIN_VERS);
+            for (int i = 0; i < 3; i++) {
+              uint8_t numeric = v_str[i]-48; uint8_t bm_offset = numeric*5;
+              uint8_t dxp = 20;
+              if (i == 1) dxp += 9*1+4;
+              if (i == 2) dxp += 9*2+4;
+              disp_area.drawBitmap(dxp, 37+16, bm_n_uh+bm_offset, 8, 5, DISPLAY_WHITE, DISPLAY_BLACK);
+            }
+            free(v_str);
+            disp_area.drawLine(27, 37+19, 28, 37+19, DISPLAY_BLACK);
+            disp_area.drawLine(27, 37+20, 28, 37+20, DISPLAY_BLACK);
+          }
+          #else
           if (disp_page == 0) {
             if (true || device_signatures_ok()) {
               disp_area.drawBitmap(0, 37, bm_checks, disp_area.width(), 27, DISPLAY_WHITE, DISPLAY_BLACK);
@@ -1115,6 +1146,7 @@ void draw_disp_area() {
             disp_area.drawLine(27, 37+19, 28, 37+19, DISPLAY_BLACK);
             disp_area.drawLine(27, 37+20, 28, 37+20, DISPLAY_BLACK);
           }
+          #endif
         }
       }
     } else {
@@ -1283,36 +1315,22 @@ void display_unblank() {
 }
 
 #if BOARD_MODEL == BOARD_HELTEC_MESHP
-// E-Ink keeps this image after SYSTEMOFF — snapshot, not live state.
+// E-Ink keeps this image after SYSTEMOFF — radios already stopped before draw.
 void meshp_draw_sleep_splash() {
   display.setFullWindow();
   display.fillScreen(DISPLAY_WHITE);
   display.setTextColor(DISPLAY_BLACK);
   display.setFont();
-  display.setTextSize(3);
-  display.setCursor(40, 12);
-  display.print("SLEEP");
-  display.setTextSize(1);
-  display.setCursor(70, 48);
-  display.print("wake: USER");
-
-  const char* ble_line = "BLE off";
-  #if HAS_BLE
-    if (bt_state == BT_STATE_CONNECTED) ble_line = "BLE connected";
-    else if (bt_state == BT_STATE_PAIRING) ble_line = "BLE pairing";
-    else if (bt_state == BT_STATE_ON) ble_line = "BLE on";
-    else if (bt_state == BT_STATE_OFF) ble_line = "BLE off";
-  #endif
   display.setTextSize(2);
-  display.setCursor(16, 68);
-  display.print(ble_line);
-
-  bool lora_on = false;
-  for (int i = 0; i < INTERFACE_COUNT; i++) {
-    if (interface_obj[i] && interface_obj[i]->getRadioOnline()) { lora_on = true; break; }
-  }
-  display.setCursor(16, 96);
-  display.print(lora_on ? "LoRa on" : "LoRa off");
+  display.setCursor(28, 18);
+  display.print("AIRPLANE");
+  display.setTextSize(1);
+  display.setCursor(40, 52);
+  display.print("BLE + LoRa off");
+  display.setCursor(52, 72);
+  display.print("CPU SYSTEMOFF");
+  display.setCursor(58, 96);
+  display.print("wake: USER");
 
   display.display(false); // full refresh so image survives power-off
   delay(400);

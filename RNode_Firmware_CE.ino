@@ -488,9 +488,22 @@ void setup() {
   // Validate board health, EEPROM and config
   validate_status();
   #if BOARD_MODEL == BOARD_HELTEC_MESHP
-    MP_DBG("[MP] after validate hw_ready=%d fw_ok=%d bt_ready=%d bt_en=%d\r\n",
+    MP_DBG("[MP] after validate hw_ready=%d fw_ok=%d bt_ready=%d bt_en=%d radio_en=%d conf=%d\r\n",
            hw_ready ? 1 : 0, device_firmware_ok() ? 1 : 0,
-           bt_ready ? 1 : 0, bt_enabled ? 1 : 0);
+           bt_ready ? 1 : 0, bt_enabled ? 1 : 0,
+           radio_conf_enabled() ? 1 : 0, eeprom_have_conf() ? 1 : 0);
+    // Restore LoRa from EEPROM defaults (BLE already started in bt_init when enabled).
+    if (hw_ready && radio_conf_enabled()) {
+      for (int i = 0; i < INTERFACE_COUNT; i++) {
+        eeprom_conf_load(interface_obj[i]);
+        bool ok = startRadio(interface_obj[i]);
+        MP_DBG("[MP] boot LoRa[%d] start=%d online=%d\r\n", i, ok ? 1 : 0,
+               (interface_obj[i] && interface_obj[i]->getRadioOnline()) ? 1 : 0);
+      }
+    } else {
+      MP_DBG("[MP] boot LoRa skipped (hw_ready=%d radio_en=%d)\r\n",
+             hw_ready ? 1 : 0, radio_conf_enabled() ? 1 : 0);
+    }
     if (bt_ready && bt_enabled && bt_state != BT_STATE_CONNECTED) {
       bt_enable_pairing();
       last_epd_refresh = 0;
@@ -499,8 +512,12 @@ void setup() {
       if (disp_ready) update_display();
       MP_DBG("[MP] *** TYPE THIS PIN IN SIDEBAND: %06lu ***\r\n",
              (unsigned long)bt_ssp_pin);
+    } else if (disp_ready) {
+      last_epd_refresh = 0;
+      last_disp_update = 0;
+      update_display();
     }
-    MP_DBG("[MP] setup complete\r\n");
+    MP_DBG("[MP] setup complete bt_state=%u\r\n", bt_state);
   #endif
 }
 
@@ -1734,13 +1751,20 @@ void process_serial() {
 
 void sleep_now() {
   #if HAS_SLEEP == true
+    // Airplane / deep sleep: kill RF first, then MCU SYSTEMOFF / deep sleep.
+    for (int i = 0; i < INTERFACE_COUNT; i++) {
+        stopRadio(interface_obj[i]);
+    }
     #if BOARD_MODEL == BOARD_HELTEC_MESHP
-      // Draw splash while radios/BLE still reflect last live state, then power down.
+      radio_conf_save(false);
+      #if HAS_BLE
+        bt_stop();
+        bt_conf_save(false);
+        delay(30);
+      #endif
+      // Splash after radios are off so e-ink shows airplane state until wake.
       if (disp_ready) { meshp_draw_sleep_splash(); }
     #endif
-    for (int i = 0; i < INTERFACE_COUNT; i++) {
-        stopRadio(interface_obj[i]); // TODO: Check this on all platforms
-    }
     #if PLATFORM == PLATFORM_ESP32
       #if BOARD_MODEL == BOARD_T3S3 || BOARD_MODEL == BOARD_XIAO_S3
         display_intensity = 0;
@@ -1771,10 +1795,8 @@ void sleep_now() {
         analogWrite(PIN_VEXT_EN, 0);
         delay(100);
       #elif BOARD_MODEL == BOARD_HELTEC_MESHP
-        #if HAS_BLE
-          bt_stop();
-          delay(50);
-        #endif
+        // Already stopped LoRa + BLE above. SYSTEMOFF = near-zero draw; wake = USER.
+        delay(20);
       #endif
       sd_power_gpregret_set(0, 0x6d);
       nrf_gpio_cfg_sense_input(pin_btn_usr1, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
@@ -1785,71 +1807,13 @@ void sleep_now() {
 
 void button_event(uint8_t event, unsigned long duration) {
     #if BOARD_MODEL == BOARD_HELTEC_MESHP
-      // On MeshPocket, `duration` is the multi-click count (1..4), not hold ms.
-      MP_DBG("[MP] button event=%u clicks=%lu blanked=%d bt_state=%u\r\n",
+      MP_DBG("[MP] button event=%u hold_ms=%lu blanked=%d bt_state=%u\r\n",
              event, duration, display_blanked ? 1 : 0, bt_state);
     #endif
     if (display_blanked) {
       display_unblank();
     } else {
-      #if BOARD_MODEL == BOARD_HELTEC_MESHP
-      {
-        uint8_t clicks = (uint8_t)duration;
-        if (clicks < 1) clicks = 1;
-        if (clicks == 1) {
-          #if HAS_BLE
-            if (bt_state == BT_STATE_OFF) {
-              MP_DBG("[MP] USER 1x: BLE on\r\n");
-              bt_start();
-              bt_conf_save(true);
-            } else {
-              MP_DBG("[MP] USER 1x: BLE off\r\n");
-              bt_stop();
-              bt_conf_save(false);
-            }
-            meshp_force_display_refresh();
-          #endif
-        } else if (clicks == 2) {
-          MP_DBG("[MP] USER 2x: LoRa toggle\r\n");
-          bool any_on = false;
-          for (int i = 0; i < INTERFACE_COUNT; i++) {
-            if (interface_obj[i] && interface_obj[i]->getRadioOnline()) { any_on = true; break; }
-          }
-          if (any_on) {
-            for (int i = 0; i < INTERFACE_COUNT; i++) { stopRadio(interface_obj[i]); }
-            radio_conf_save(false);
-          } else {
-            radio_conf_save(true);
-            for (int i = 0; i < INTERFACE_COUNT; i++) {
-              if (!startRadio(interface_obj[i])) {
-                MP_DBG("[MP] LoRa start failed (need host radio config?)\r\n");
-              }
-            }
-          }
-          meshp_force_display_refresh();
-        } else if (clicks == 3) {
-          #if HAS_BLE
-            MP_DBG("[MP] USER 3x: pairing\r\n");
-            if (bt_state == BT_STATE_OFF) {
-              bt_start();
-              bt_conf_save(true);
-            }
-            if (bt_state != BT_STATE_CONNECTED) {
-              bt_enable_pairing();
-              meshp_force_display_refresh();
-            } else {
-              MP_DBG("[MP] pairing skipped — already CONNECTED\r\n");
-            }
-          #endif
-        } else {
-          // 4+ clicks → soft sleep
-          MP_DBG("[MP] USER 4x: sleep\r\n");
-          #if HAS_SLEEP
-            sleep_now();
-          #endif
-        }
-      }
-      #else
+      // Hold UX (RNode-compatible): short=BLE, >0.7s=airplane sleep, >5s=pairing
       if (duration > 10000) {
         #if HAS_CONSOLE
           #if HAS_BLUETOOTH || HAS_BLE
@@ -1860,26 +1824,49 @@ void button_event(uint8_t event, unsigned long duration) {
         #endif
       } else if (duration > 5000) {
         #if HAS_BLUETOOTH || HAS_BLE
-          if (bt_state != BT_STATE_CONNECTED) { bt_enable_pairing(); }
+          #if BOARD_MODEL == BOARD_HELTEC_MESHP
+            MP_DBG("[MP] USER hold>5s: pairing\r\n");
+            if (bt_state == BT_STATE_OFF) {
+              bt_start();
+              bt_conf_save(true);
+            }
+            if (bt_state != BT_STATE_CONNECTED) {
+              bt_enable_pairing();
+              meshp_force_display_refresh();
+            }
+          #else
+            if (bt_state != BT_STATE_CONNECTED) { bt_enable_pairing(); }
+          #endif
         #endif
       } else if (duration > 700) {
         #if HAS_SLEEP
+          #if BOARD_MODEL == BOARD_HELTEC_MESHP
+            MP_DBG("[MP] USER hold>0.7s: airplane sleep\r\n");
+          #endif
           sleep_now();
         #endif
       } else {
         #if HAS_BLUETOOTH || HAS_BLE
         if (bt_state != BT_STATE_CONNECTED) {
           if (bt_state == BT_STATE_OFF) {
+            #if BOARD_MODEL == BOARD_HELTEC_MESHP
+              MP_DBG("[MP] USER click: BLE on\r\n");
+            #endif
             bt_start();
             bt_conf_save(true);
           } else {
+            #if BOARD_MODEL == BOARD_HELTEC_MESHP
+              MP_DBG("[MP] USER click: BLE off\r\n");
+            #endif
             bt_stop();
             bt_conf_save(false);
           }
+          #if BOARD_MODEL == BOARD_HELTEC_MESHP
+            meshp_force_display_refresh();
+          #endif
         }
         #endif
       }
-      #endif
     }
 }
 

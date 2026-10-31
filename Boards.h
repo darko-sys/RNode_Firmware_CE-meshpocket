@@ -1409,7 +1409,8 @@
       #define HAS_BLUETOOTH false
       #define HAS_BLE true
       #define HAS_CONSOLE false
-      #define HAS_PMU false
+      // ADC battery sense (Meshtastic heltec_mesh_pocket: VBAT=29, ADC_CTRL=34)
+      #define HAS_PMU true
       #define HAS_NP false
       #define HAS_SD false
       #define HAS_TCXO true
@@ -1421,6 +1422,22 @@
       // Verbose USB-serial BLE/pairing trace @ 115200. Build with -DMESHP_DEBUG=0 to silence.
       #ifndef MESHP_DEBUG
         #define MESHP_DEBUG 1
+      #endif
+      // EU 868 defaults restored on boot when no host has saved radio params yet.
+      #ifndef MESHP_DEFAULT_FREQ
+        #define MESHP_DEFAULT_FREQ 869525000UL
+      #endif
+      #ifndef MESHP_DEFAULT_BW
+        #define MESHP_DEFAULT_BW 125000UL
+      #endif
+      #ifndef MESHP_DEFAULT_SF
+        #define MESHP_DEFAULT_SF 8
+      #endif
+      #ifndef MESHP_DEFAULT_CR
+        #define MESHP_DEFAULT_CR 6
+      #endif
+      #ifndef MESHP_DEFAULT_TXP
+        #define MESHP_DEFAULT_TXP 14
       #endif
       #define CONFIG_UART_BUFFER_SIZE 6144
       #define CONFIG_QUEUE_SIZE 6144
